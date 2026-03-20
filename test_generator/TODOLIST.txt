@@ -1,0 +1,13 @@
+cambiare da gemini a openai
+rendere il programma usabile su piu classi alla volta
+riconoscere in automatico quali versione dei vari Moq, Fluent assertion ecc è installata sul pc e mettere quella versione nella creazione del .csproj
+qualora non ci fossero prevedere di mettere la piu recente
+fare in modo che sia usabile anche per + tester e non solo per mstest
+verificare il funzionamento su interfacce
+fare in modo che un eventuale installer generi installi anche la variabile di sistema relativa alla AI KEY
+fare in modo che un eventuale installer modifichi in automatico anche vs per la questione strumenti, SE POSSIBILE
+guardare se codex è esposto
+guardare i pricing per llama locale
+aggiungere il log
+
+pyinstaller --onefile --paths . --collect-all tree_sitter_c_sharp main.py

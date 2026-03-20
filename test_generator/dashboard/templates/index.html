@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="it" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TestGenerator — Analytics Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-base:    #0d1117;
+      --bg-card:    #161b22;
+      --bg-card2:   #1c2128;
+      --border:     #30363d;
+      --border-dim: #21262d;
+      --text-muted: #8b949e;
+      --green:  #2ea043; --green-bright: #56d364;
+      --blue:   #1f6feb; --blue-bright:  #58a6ff;
+      --purple: #6e40c9; --purple-bright:#bc8cff;
+      --teal:   #1a7f64; --teal-bright:  #3fb950;
+      --orange: #d29922; --orange-bright:#e3b341;
+    }
+
+    body { background: var(--bg-base); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    /* ── Navbar ── */
+    .dash-nav {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: .75rem 1.5rem;
+    }
+    .dash-nav .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: -.02em; }
+    .dash-nav .meta  { font-size: .75rem; color: var(--text-muted); }
+
+    /* ── KPI cards ── */
+    .kpi { background: linear-gradient(135deg, var(--bg-card), var(--bg-card2));
+           border: 1px solid var(--border); border-radius: 12px;
+           padding: 1.4rem 1.6rem; position: relative; overflow: hidden; }
+    .kpi::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+    .kpi-green::before  { background: linear-gradient(90deg, var(--green),  var(--green-bright)); }
+    .kpi-blue::before   { background: linear-gradient(90deg, var(--blue),   var(--blue-bright)); }
+    .kpi-purple::before { background: linear-gradient(90deg, var(--purple), var(--purple-bright)); }
+    .kpi-teal::before   { background: linear-gradient(90deg, var(--teal),   var(--teal-bright)); }
+    .kpi-value { font-size: 2.1rem; font-weight: 700; line-height: 1.1; }
+    .kpi-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+    .kpi-sub   { font-size: .78rem; color: var(--text-muted); margin-top: .3rem; }
+
+    /* ── Chart/table cards ── */
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: transparent;
+      border-bottom: 1px solid var(--border);
+      padding: .8rem 1.4rem;
+      font-size: .72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .07em;
+      color: var(--text-muted);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-body { padding: 1.2rem 1.4rem; }
+
+    /* ── Savings box ── */
+    .savings-box {
+      background: linear-gradient(135deg, #0d2818 0%, #0d1c2e 100%);
+      border: 1px solid var(--green);
+      border-radius: 12px;
+      padding: 1.4rem 1.8rem;
+    }
+    .savings-formula {
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .9rem 1.2rem;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: .88rem;
+      line-height: 1.7;
+    }
+
+    /* ── Table ── */
+    .tbl th {
+      font-size: .7rem; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--text-muted);
+      font-weight: 400; border-bottom-color: var(--border);
+      padding: .65rem 1rem;
+    }
+    .tbl td {
+      font-size: .83rem; border-color: var(--border-dim);
+      vertical-align: middle; padding: .6rem 1rem;
+    }
+    .fw-badge { font-size: .68rem; padding: 2px 9px; border-radius: 20px; font-weight: 500; }
+
+    /* ── Central card ── */
+    .central-card {
+      background: var(--bg-card);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 1.4rem 1.8rem;
+    }
+
+    /* ── Misc ── */
+    .spinner-sm { width: .9rem; height: .9rem; }
+    .empty-state { color: var(--text-muted); font-size: .88rem; padding: 2rem; text-align: center; }
+    .dot-green  { color: var(--green-bright); }
+    .dot-red    { color: #f85149; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════ NAVBAR ═══════════════════════ -->
+<div class="dash-nav d-flex align-items-center justify-content-between">
+  <span class="brand">🧪 TestGenerator Analytics</span>
+  <div class="d-flex align-items-center gap-3">
+    <span class="meta" id="refresh-label">—</span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="loadStats()" style="font-size:.78rem">
+      <span id="spin" class="spinner-border spinner-sm d-none me-1" role="status"></span>
+      ↺ Aggiorna
+    </button>
+  </div>
+</div>
+
+<div class="container-fluid px-4 py-4" style="max-width:1600px; margin:0 auto">
+
+  <!-- ═══════════════════════ KPI ═══════════════════════ -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+      <div class="kpi kpi-green h-100">
+        <div class="kpi-label" style="color:var(--green-bright)">Ore risparmiate</div>
+        <div class="kpi-value" style="color:var(--green-bright)" id="kpi-hours">—</div>
+        <div class="kpi-sub" id="kpi-days">— giorni lavorativi</div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi kpi-blue h-100">
+        <div class="kpi-label" style="color:var(--blue-bright)">File processati</div>
+        <div class="kpi-value" style="color:var(--blue-bright)" id="kpi-files">—</div>
+        <div class="kpi-sub" id="kpi-sessions">— sessioni totali</div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi kpi-purple h-100">
+        <div class="kpi-label" style="color:var(--purple-bright)">Scenari generati</div>
+        <div class="kpi-value" style="color:var(--purple-bright)" id="kpi-scenarios">—</div>
+        <div class="kpi-sub" id="kpi-avg">— media per file</div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi kpi-teal h-100">
+        <div class="kpi-label" style="color:var(--teal-bright)">Tasso di successo</div>
+        <div class="kpi-value" style="color:var(--teal-bright)" id="kpi-success">—</div>
+        <div class="kpi-sub" id="kpi-errors">— errori totali</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ SAVINGS ═══════════════════════ -->
+  <div class="savings-box mb-4">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-7">
+        <div class="mb-2 fw-semibold" style="color:var(--green-bright)">💰 Stima Risparmio Aziendale</div>
+        <div class="savings-formula" id="savings-formula">Caricamento in corso…</div>
+      </div>
+      <div class="col-lg-5">
+        <p class="text-muted mb-1" style="font-size:.82rem">
+          Ogni scenario richiede mediamente
+          <strong class="text-white" id="manual-min">—</strong> minuti di lavoro manuale
+          (analisi, scrittura test, esecuzione, debug). Il tempo AI è il tempo
+          effettivo di chiamata registrato nei log.
+        </p>
+        <p class="text-muted mb-0" style="font-size:.75rem">
+          Override: <code>TESTGEN_MANUAL_MINUTES=20</code> &nbsp;|&nbsp;
+          <code>TESTGEN_WORKDAY_HOURS=8</code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ CHART ROW 1 ═══════════════════════ -->
+  <div class="row g-3 mb-4">
+    <div class="col-lg-8">
+      <div class="panel h-100">
+        <div class="panel-header">📈 Attività ultimi 30 giorni</div>
+        <div class="panel-body"><canvas id="timelineChart" height="115"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="panel h-100">
+        <div class="panel-header">🔵 Distribuzione Framework</div>
+        <div class="panel-body d-flex align-items-center justify-content-center" style="min-height:220px">
+          <canvas id="frameworkChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ CHART ROW 2 ═══════════════════════ -->
+  <div class="row g-3 mb-4">
+    <div class="col-lg-4">
+      <div class="panel h-100">
+        <div class="panel-header">⚡ Tempo medio AI per modello</div>
+        <div class="panel-body"><canvas id="modelChart" height="200"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-8">
+      <div class="panel h-100">
+        <div class="panel-header">🏗️ File più complessi (N° scenari)</div>
+        <div class="panel-body"><canvas id="complexityChart" height="200"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ TABLE ═══════════════════════ -->
+  <div class="panel mb-4">
+    <div class="panel-header">📋 Sessioni recenti</div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 tbl">
+        <thead>
+          <tr>
+            <th class="ps-3">ID Sessione</th>
+            <th>Timestamp</th>
+            <th>Framework</th>
+            <th>Modello AI</th>
+            <th class="text-center">File</th>
+            <th class="text-center">Scenari</th>
+            <th class="text-center">Esito</th>
+            <th class="text-end pe-3">Tempo AI tot.</th>
+          </tr>
+        </thead>
+        <tbody id="sessions-tbody">
+          <tr><td colspan="8" class="empty-state">Caricamento…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ ERRORS ═══════════════════════ -->
+  <div class="row g-3 mb-4" id="errors-section" style="display:none!important">
+    <div class="col-12">
+      <div class="panel">
+        <div class="panel-header" style="color:#f85149">⚠️ Errori per tipo</div>
+        <div class="panel-body">
+          <div id="errors-list" class="d-flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ CENTRAL ═══════════════════════ -->
+  <div class="central-card mb-4">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="fw-semibold text-secondary mb-2">🔗 Centralizzazione Dati — Configurazione</div>
+        <p class="text-muted mb-2" style="font-size:.83rem">
+          Per aggregare i log di tutti i colleghi in un unico punto, imposta la variabile di sistema:
+        </p>
+        <code class="text-warning d-block mb-2">TESTGEN_CENTRAL_URL=https://analytics.azienda.com</code>
+        <p class="text-muted mb-0" style="font-size:.78rem">
+          Al termine di ogni generazione, il programma invierà automaticamente un riepilogo compatto
+          all'endpoint <code>/api/ingest</code>. Il server centrale è un'istanza separata di questa
+          stessa applicazione, configurata per raccogliere dati da più macchine.
+        </p>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold text-secondary mb-2">📊 Analisi possibili con dati centralizzati</div>
+        <ul class="text-muted mb-0" style="font-size:.82rem">
+          <li>Confronto performance tra modelli AI nel tempo</li>
+          <li>Risparmio aggregato per team e reparto</li>
+          <li>Trend di adozione: quanti colleghi usano il tool</li>
+          <li>Classi più complesse del codebase aziendale</li>
+          <li>ROI mensile/annuale del tool con dati reali</li>
+          <li>Alert su degradazione delle performance AI</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="text-center text-muted mb-3" style="font-size:.73rem">
+    File di log: <code id="log-path">—</code> &nbsp;·&nbsp; Auto-aggiornamento ogni 60s
+  </div>
+
+</div><!-- /container -->
+
+<!-- ═══════════════════════ JAVASCRIPT ═══════════════════════ -->
+<script>
+"use strict";
+
+/* ── State ── */
+let _charts = {};
+
+/* ── Helpers ── */
+const $ = id => document.getElementById(id);
+const fmt = (n, d=0) => n != null ? Number(n).toLocaleString('it-IT', {minimumFractionDigits:d, maximumFractionDigits:d}) : '—';
+const fmtMs = ms => ms >= 1000 ? fmt(ms/1000,1)+' s' : fmt(ms)+' ms';
+
+const FW_COLORS = { mstest:'#1f6feb', xunit:'#8957e5', nunit:'#1a7f64' };
+const fwColor  = fw => FW_COLORS[fw] || '#6e7681';
+const fwBadge  = fw => {
+  const cls = {mstest:'primary', xunit:'info', nunit:'success'}[fw] || 'secondary';
+  return `<span class="badge fw-badge bg-${cls}">${fw || '—'}</span>`;
+};
+
+const CHART_GRID  = '#21262d';
+const CHART_TEXT  = '#8b949e';
+Chart.defaults.color = CHART_TEXT;
+
+function destroyChart(key) {
+  if (_charts[key]) { _charts[key].destroy(); delete _charts[key]; }
+}
+
+/* ── Charts ── */
+function renderTimeline(data) {
+  destroyChart('tl');
+  const labels   = data.map(d => d.date.slice(5));
+  const files    = data.map(d => d.files);
+  const scenarios = data.map(d => d.scenarios);
+  _charts['tl'] = new Chart($('timelineChart'), {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line', label: 'Scenari', data: scenarios, yAxisID: 'yR',
+          borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,.15)',
+          tension: .4, fill: true, pointRadius: 0, borderWidth: 2,
+        },
+        {
+          type: 'bar', label: 'File', data: files, yAxisID: 'yL',
+          backgroundColor: 'rgba(31,111,235,.7)', borderColor: '#58a6ff', borderWidth: 1,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } },
+      scales: {
+        x:  { grid: { color: CHART_GRID }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+        yL: { grid: { color: CHART_GRID }, beginAtZero: true, title: { display: true, text: 'File', font: { size: 10 } } },
+        yR: { position: 'right', grid: { display: false }, beginAtZero: true, title: { display: true, text: 'Scenari', font: { size: 10 } } },
+      }
+    }
+  });
+}
+
+function renderFramework(byFw) {
+  destroyChart('fw');
+  const labels = Object.keys(byFw);
+  const values = Object.values(byFw);
+  if (!labels.length) return;
+  _charts['fw'] = new Chart($('frameworkChart'), {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: labels.map(fwColor), borderColor: '#161b22', borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, cutout: '68%',
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${c.parsed} file` } }
+      }
+    }
+  });
+}
+
+function renderModels(byModel) {
+  destroyChart('mdl');
+  const labels = Object.keys(byModel);
+  const avgMs  = labels.map(l => byModel[l].avg_ms);
+  const counts = labels.map(l => byModel[l].count);
+  if (!labels.length) return;
+  _charts['mdl'] = new Chart($('modelChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Tempo medio (ms)', data: avgMs,
+        backgroundColor: 'rgba(88,166,255,.7)', borderColor: '#58a6ff', borderWidth: 1,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { afterLabel: (c) => `  Chiamate: ${counts[c.dataIndex]}` } }
+      },
+      scales: {
+        x: { grid: { color: CHART_GRID }, beginAtZero: true, title: { display: true, text: 'ms', font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function renderComplexity(topFiles) {
+  destroyChart('cx');
+  if (!topFiles.length) return;
+  const labels = topFiles.map(f => f.file.replace(/\.cs$/i, ''));
+  const values = topFiles.map(f => f.scenarios);
+  _charts['cx'] = new Chart($('complexityChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Scenari', data: values,
+        backgroundColor: 'rgba(188,140,255,.7)', borderColor: '#bc8cff', borderWidth: 1,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: CHART_GRID }, beginAtZero: true },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+/* ── Sessions table ── */
+function renderSessions(sessions) {
+  const tbody = $('sessions-tbody');
+  if (!sessions || !sessions.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nessuna sessione registrata ancora.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = sessions.map(s => `
+    <tr>
+      <td class="ps-3"><code style="font-size:.78rem;color:#58a6ff">${s.session_id}</code></td>
+      <td style="font-size:.82rem">${s.timestamp}</td>
+      <td>${fwBadge(s.framework)}</td>
+      <td style="font-size:.78rem;color:${CHART_TEXT}">${s.model || '—'}</td>
+      <td class="text-center">${s.files}</td>
+      <td class="text-center">${fmt(s.scenarios)}</td>
+      <td class="text-center">
+        ${s.fail > 0
+          ? `<span class="dot-green">${s.ok}✓</span> <span class="dot-red">${s.fail}✗</span>`
+          : `<span class="dot-green">${s.ok} ✓</span>`}
+      </td>
+      <td class="text-end pe-3" style="font-size:.82rem">${s.ai_ms > 0 ? fmtMs(s.ai_ms) : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+/* ── Errors section ── */
+function renderErrors(errByEvent) {
+  const keys = Object.keys(errByEvent);
+  const section = $('errors-section');
+  if (!keys.length) { section.style.setProperty('display','none','important'); return; }
+  section.style.removeProperty('display');
+  $('errors-list').innerHTML = keys.map(k =>
+    `<span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2" style="font-size:.78rem">
+       ${k} <strong class="ms-1">${errByEvent[k]}</strong>
+     </span>`
+  ).join('');
+}
+
+/* ── Main load ── */
+async function loadStats() {
+  const spin = $('spin');
+  spin.classList.remove('d-none');
+  try {
+    const resp = await fetch('/api/stats');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const d = await resp.json();
+
+    /* KPIs */
+    $('kpi-hours').textContent   = fmt(d.savings.net_hours_saved, 1) + ' h';
+    $('kpi-days').textContent    = fmt(d.savings.net_days_saved, 1) + ' giorni lavorativi';
+    $('kpi-files').textContent   = fmt(d.summary.total_files);
+    $('kpi-sessions').textContent = fmt(d.summary.total_sessions) + ' sessioni totali';
+    $('kpi-scenarios').textContent = fmt(d.summary.total_scenarios);
+    $('kpi-avg').textContent     = fmt(d.performance.avg_scenarios_per_file, 1) + ' media per file';
+    $('kpi-success').textContent = fmt(d.summary.success_rate, 1) + '%';
+    $('kpi-errors').textContent  = fmt(d.summary.total_errors) + ' errori totali';
+
+    /* Savings box */
+    const sv = d.savings;
+    $('manual-min').textContent = sv.manual_minutes_per_scenario;
+    $('savings-formula').innerHTML =
+      `<span style="color:${CHART_TEXT}">${fmt(sv.total_scenarios)} scenari</span> &times; ` +
+      `<span style="color:#e6edf3">${sv.manual_minutes_per_scenario} min/scenario</span> ` +
+      `= <span style="color:#56d364;font-weight:600">${fmt(sv.manual_hours, 1)} ore di lavoro manuale</span><br>` +
+      `Tempo AI effettivo registrato: <span style="color:#58a6ff">${sv.ai_hours} ore</span><br>` +
+      `<span style="color:#56d364;font-weight:700;font-size:1rem">` +
+      `→ Risparmio netto: ${fmt(sv.net_hours_saved, 1)} ore ` +
+      `≈ ${fmt(sv.net_days_saved, 1)} giorni lavorativi di 8h</span>`;
+
+    /* Charts */
+    renderTimeline(d.timeline);
+    renderFramework(d.performance.by_framework);
+    renderModels(d.performance.by_model);
+    renderComplexity(d.top_complex_files);
+
+    /* Table + errors */
+    renderSessions(d.recent_sessions);
+    renderErrors(d.errors_by_event || {});
+
+    /* Footer */
+    $('log-path').textContent = d.log_path || '—';
+    $('refresh-label').textContent = 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT');
+
+  } catch (err) {
+    console.error(err);
+    $('refresh-label').textContent = '⚠ Errore caricamento — ' + err.message;
+  } finally {
+    spin.classList.add('d-none');
+  }
+}
+
+loadStats();
+setInterval(loadStats, 60_000);
+</script>
+</body>
+</html>
