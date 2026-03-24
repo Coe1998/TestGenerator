@@ -1,10 +1,14 @@
 import json
+import time
 import urllib.request
 import urllib.error
 
-from config import OLLAMA_MODEL, OLLAMA_URL
+from config import OLLAMA_MODEL, OLLAMA_URL, AI_SYSTEM_INSTRUCTION
 from generators.prompt_builder import build_prompt
+from core.logger import log_timing, log_event
 
+_MAX_RETRIES   = 3
+_RETRY_DELAY_S = 2
 
 FRAMEWORK_SYNTAX = {
     "mstest": "MSTest ([TestClass], [TestMethod], [TestInitialize])",
@@ -12,41 +16,56 @@ FRAMEWORK_SYNTAX = {
     "nunit":  "NUnit ([TestFixture], [Test], [SetUp], [TearDown])",
 }
 
+
 def _build_system_prompt(framework="mstest"):
     fw_syntax = FRAMEWORK_SYNTAX.get(framework.lower(), FRAMEWORK_SYNTAX["mstest"])
-    return f"""Sei un esperto di unit testing in C#.
-Il tuo compito è generare una classe di test completa e compilabile.
-
-Regole TASSATIVE:
-- Usa SOLO {fw_syntax} e FluentAssertions (.Should())
-- Restituisci ESCLUSIVAMENTE codice C# puro, senza blocchi markdown, senza ```, senza spiegazioni
-- La prima riga deve essere un using o il namespace, mai testo libero
-- Usa nomi di metodo descrittivi nel formato: NomeMetodo_Scenario_RisultatoAtteso
-- Mocka le dipendenze con Moq se la classe le ha nel costruttore
-- Ogni test deve avere i commenti // Arrange / // Act / // Assert"""
+    return (
+        AI_SYSTEM_INSTRUCTION + "\n\n"
+        f"Framework richiesto: {fw_syntax} e FluentAssertions (.Should())."
+    )
 
 
 def call_ollama(scenarios, class_content, framework="mstest"):
-    user_prompt = build_prompt(scenarios, class_content, framework)
-    full_prompt = _build_system_prompt(framework) + "\n\n" + user_prompt
+    user_prompt  = build_prompt(scenarios, class_content, framework)
+    full_prompt  = _build_system_prompt(framework) + "\n\n" + user_prompt
 
     payload = json.dumps({
-        "model": OLLAMA_MODEL,
+        "model":  OLLAMA_MODEL,
         "prompt": full_prompt,
-        "stream": False
+        "stream": False,
     }).encode("utf-8")
 
     req = urllib.request.Request(
         OLLAMA_URL,
         data=payload,
         headers={"Content-Type": "application/json"},
-        method="POST"
+        method="POST",
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"Errore connessione Ollama: {e.reason}") from e
+    last_exc = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            with log_timing("ai_call", model=OLLAMA_MODEL, framework=framework, attempt=attempt):
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+            return result["response"].strip()
+        except urllib.error.URLError as e:
+            last_exc = e
+            if attempt < _MAX_RETRIES:
+                delay = _RETRY_DELAY_S * attempt
+                log_event("warning", "ai_retry",
+                          model=OLLAMA_MODEL, attempt=attempt, error=str(e))
+                print(f"  [WARN] Tentativo {attempt}/{_MAX_RETRIES} fallito, "
+                      f"riprovo tra {delay}s... ({e.reason})")
+                time.sleep(delay)
+        except Exception as e:
+            last_exc = e
+            if attempt < _MAX_RETRIES:
+                delay = _RETRY_DELAY_S * attempt
+                log_event("warning", "ai_retry",
+                          model=OLLAMA_MODEL, attempt=attempt, error=str(e))
+                print(f"  [WARN] Tentativo {attempt}/{_MAX_RETRIES} fallito, "
+                      f"riprovo tra {delay}s... ({e})")
+                time.sleep(delay)
 
-    return result["response"].strip()
+    raise RuntimeError(f"Errore Ollama dopo {_MAX_RETRIES} tentativi: {last_exc}")

@@ -4,27 +4,39 @@ import re
 from pathlib import Path
 from core.logger import log_timing, log_event, log_error
 
+def _version_key(v: str) -> list:
+    """Chiave di ordinamento semantico per versioni tipo '10.2.1'."""
+    parts = []
+    for segment in v.split("."):
+        # Estrae solo la parte numerica iniziale (es. "1rc1" → 1)
+        numeric = ""
+        for ch in segment:
+            if ch.isdigit():
+                numeric += ch
+            else:
+                break
+        parts.append(int(numeric) if numeric else 0)
+    return parts
+
+
 def get_installed_nuget_version(package_name, fallback_version):
     """
-    Controlla nella cache globale di NuGet (~/.nuget/packages) 
+    Controlla nella cache globale di NuGet (~/.nuget/packages)
     la versione più recente installata per un pacchetto.
+    Usa ordinamento semantico per evitare l'errore '9.x > 10.x' in sort alfabetico.
     """
     try:
-        # NuGet salva le cartelle dei pacchetti in minuscolo
-        nuget_path = Path(os.environ.get('USERPROFILE', os.path.expanduser("~"))) / ".nuget" / "packages" / package_name.lower()
-        
+        nuget_path = (Path(os.environ.get("USERPROFILE", os.path.expanduser("~")))
+                      / ".nuget" / "packages" / package_name.lower())
+
         if not nuget_path.exists():
             return fallback_version
-        
-        # Recupera tutte le sottocartelle (versioni) e le ordina
+
         versions = [d.name for d in nuget_path.iterdir() if d.is_dir()]
-        
         if not versions:
             return fallback_version
-            
-        # Ordinamento semplice (per versioni semantiche complesse servirebbe packaging.version, 
-        # ma per un uso standard l'ordinamento di lista è sufficiente)
-        versions.sort()
+
+        versions.sort(key=_version_key)
         return versions[-1]
     except Exception:
         return fallback_version
@@ -140,6 +152,11 @@ def write_test_file(test_code, source_path, framework="mstest"):
 </Project>"""
 
     # 6. Scrittura File
+    if test_file_path.exists():
+        print(f"  [WARN] File di test già esistente — verrà sovrascritto: {test_file_path.name}")
+        log_event("warning", "test_file_overwrite",
+                  file=source_file.name, output_path=str(test_file_path))
+
     with log_timing("test_write", file=source_file.name, output_path=str(test_file_path),
                     framework=framework):
         with open(csproj_path, "w", encoding="utf-8") as f:

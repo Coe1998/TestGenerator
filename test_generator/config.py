@@ -1,9 +1,7 @@
 import sys
 import io
-import os
 import tree_sitter_c_sharp as csharp
 from tree_sitter import Language
-import google.generativeai as genai  # <--- Sostituito OpenAI con Gemini
 
 # Forza UTF-8 per console Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -11,31 +9,28 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 CS_LANG = Language(csharp.language())
 
 # ======================================
-# CONFIGURAZIONE GEMINI
+# MODELLI / PROVIDER
 # ======================================
 
-# Recupera la chiave dalla variabile di sistema "GOOGLE_API_KEY"
-api_key = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = model_name="gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
+OPENAI_MODEL = "gpt-4o"
+OLLAMA_MODEL = "deepseek-coder:6.7b"
+OLLAMA_URL   = "http://localhost:11434/api/generate"
 
-if not api_key:
-    print("ERRORE: Variabile di sistema 'GOOGLE_API_KEY' non trovata.")
-    sys.exit(1)
+# ======================================
+# SYSTEM INSTRUCTION (condivisa da tutti i provider)
+# ======================================
 
-# Configura la libreria con la tua API Key
-genai.configure(api_key=api_key)
-
-# Definizione del modello Gemini 2.5 Flash
-# Le istruzioni di sistema vengono fornite qui per dare contesto all'IA
-model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",
-    system_instruction=(
-        "Sei un generatore di codice puro. "
-        "Rispondi SOLO ed ESCLUSIVAMENTE con codice C# valido. "
-        "È severamente vietato includere testo discorsivo, saluti o prefazioni. "
-        "Non utilizzare i delimitatori di blocco markdown (```csharp). "
-        "Il tuo output verrà salvato direttamente in un file .cs, quindi deve essere sintatticamente perfetto."
-    )
+AI_SYSTEM_INSTRUCTION = (
+    "Sei un generatore di codice puro specializzato in Unit Testing C#. "
+    "Rispondi SOLO ed ESCLUSIVAMENTE con codice C# valido e compilabile. "
+    "È severamente vietato includere testo discorsivo, saluti o prefazioni. "
+    "Non utilizzare i delimitatori di blocco markdown (```csharp). "
+    "Il tuo output verrà salvato direttamente in un file .cs, quindi deve essere "
+    "sintatticamente perfetto. "
+    "Usa nomi di metodo descrittivi nel formato: NomeMetodo_Scenario_RisultatoAtteso. "
+    "Mocka le dipendenze con Moq se la classe le ha nel costruttore. "
+    "Ogni test deve avere i commenti // Arrange / // Act / // Assert."
 )
 
 # ======================================
@@ -49,8 +44,7 @@ SEVERITY_MAP = {
     "EXCEPTION":   "HIGH",
     "INPUT":       "HIGH",
     "BOUNDARY":    "MEDIUM",
+    "ASYNC":       "HIGH",
+    "CONSTRUCTOR": "MEDIUM",
+    "NULL_SAFETY": "HIGH",
 }
-
-# Esempio di come chiamerai il modello nel resto dello script:
-# response = model.generate_content("Tuo prompt qui")
-# print(response.text)

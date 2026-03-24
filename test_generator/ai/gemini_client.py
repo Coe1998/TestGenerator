@@ -1,10 +1,13 @@
 import os
+import time
 import google.generativeai as genai
-from config import GEMINI_MODEL # Es: "gemini-2.5-flash"
+from config import GEMINI_MODEL, AI_SYSTEM_INSTRUCTION
 from generators.prompt_builder import build_prompt
-from core.logger import log_timing
+from core.logger import log_timing, log_event
 
-FRAMEWORK_LABELS = {"mstest": "MSTest", "xunit": "xUnit", "nunit": "NUnit"}
+_MAX_RETRIES   = 3
+_RETRY_DELAY_S = 2
+
 
 def call_gemini(scenarios, source_code, framework="mstest"):
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -12,21 +15,29 @@ def call_gemini(scenarios, source_code, framework="mstest"):
         raise RuntimeError("GOOGLE_API_KEY non impostata nelle variabili di sistema.")
 
     genai.configure(api_key=api_key)
-
     prompt = build_prompt(scenarios, source_code, framework)
-
-    fw_label = FRAMEWORK_LABELS.get(framework.lower(), "MSTest")
     model = genai.GenerativeModel(
         model_name=GEMINI_MODEL,
-        system_instruction=f"Sei un esperto di Unit Testing C#. Genera codice {fw_label} e FluentAssertions pulito."
+        system_instruction=AI_SYSTEM_INSTRUCTION,
     )
 
-    try:
-        with log_timing("ai_call", model=GEMINI_MODEL, framework=framework):
-            response = model.generate_content(prompt)
-        text = response.text.strip()
-        if text.startswith("```"):
-            text = "\n".join(text.split("\n")[1:-1])
-        return text
-    except Exception as e:
-        raise RuntimeError(f"Errore durante la generazione con Gemini: {e}")
+    last_exc = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            with log_timing("ai_call", model=GEMINI_MODEL, framework=framework, attempt=attempt):
+                response = model.generate_content(prompt)
+            text = response.text.strip()
+            if text.startswith("```"):
+                text = "\n".join(text.split("\n")[1:-1])
+            return text
+        except Exception as e:
+            last_exc = e
+            if attempt < _MAX_RETRIES:
+                delay = _RETRY_DELAY_S * attempt
+                log_event("warning", "ai_retry",
+                          model=GEMINI_MODEL, attempt=attempt, error=str(e))
+                print(f"  [WARN] Tentativo {attempt}/{_MAX_RETRIES} fallito, "
+                      f"riprovo tra {delay}s... ({e})")
+                time.sleep(delay)
+
+    raise RuntimeError(f"Errore Gemini dopo {_MAX_RETRIES} tentativi: {last_exc}")
